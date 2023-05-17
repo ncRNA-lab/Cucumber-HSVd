@@ -12,8 +12,12 @@ Viroids are circular RNAs of minimal complexity compelled to subvert plant-regul
 
 In this folder we can find the results tables obtained after the analysis of the omics data.
 
-- SRNAnome: Differential
-- Transcriptome: 
-- Methylome: 
+- SRNAnome: Tables from differential expression analysis comparing HSVd vs. mock for each time (10, 17 and 24 dpi). R package: DESeq2 and edgeR.
+- Transcriptome: Tables from differential expression analysis comparing HSVd vs. mock for each time (10, 17 and 24 dpi). R package: DESeq2.
+- Methylome: Tables from differential expression analysis comparing HSVd vs. mock for each time (10, 17 and 24 dpi). R package: DESeq2 and edgeR.
+
+Uses Bisulfite sequencing data in two conditions and identifies differentially methylated regions between the conditions in CG and non-CG context
+
+For more information about the methodology to obtain these tables read the paper.
 
 ### Scripts
