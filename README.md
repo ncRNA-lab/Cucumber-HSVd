@@ -1,9 +1,3 @@
-<style>
-p {
-  text-align: justify;
-}
-</style>
-
 # Multiomic analysis in cucumber plants infected with HSVd
 
 This github page stores the main tables of results as well as the code used to obtain them in the paper "Multiomic analisys reveals that viroid infection induces a temporal reprograming of plant-defence mechanisms at multiple regulatory levels".
@@ -16,6 +10,10 @@ Viroids are circular RNAs of minimal complexity compelled to subvert plant-regul
 
 ### Omics tables
 
-In this folder
+In this folder we can find the results tables obtained after the analysis of the omics data.
+
+- SRNAnome: Differential
+- Transcriptome: 
+- Methylome: 
 
 ### Scripts
