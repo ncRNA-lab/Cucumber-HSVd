@@ -14,10 +14,13 @@ In this folder we can find the results tables obtained after the analysis of the
 
 - SRNAnome: Tables from differential expression analysis comparing HSVd vs. mock for each time (10, 17 and 24 dpi). R package: DESeq2 and edgeR.
 - Transcriptome: Tables from differential expression analysis comparing HSVd vs. mock for each time (10, 17 and 24 dpi). R package: DESeq2.
-- Methylome: Tables from differential expression analysis comparing HSVd vs. mock for each time (10, 17 and 24 dpi). R package: DESeq2 and edgeR.
-
-Uses Bisulfite sequencing data in two conditions and identifies differentially methylated regions between the conditions in CG and non-CG context
+- Methylome: Tables from differential methylation analisys comparing HSVd vs. mock for each time (10, 17 and 24 dpi) and for each context (CG, CHG and CHH). R package: DMRcaller.
 
 For more information about the methodology to obtain these tables read the paper.
 
 ### Scripts
+
+- SRNAnome:
+- Transcriptome: 
+- Methylome: 
+
