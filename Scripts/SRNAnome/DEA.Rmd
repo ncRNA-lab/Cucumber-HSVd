@@ -1,0 +1,871 @@
+---
+title: "DIFFERENTIAL EXPRESSION ANALYSIS: NOISEQ, DESEQ AND EDGE"
+author: "Pascual Villalba"
+date: "23/3/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## 0. LOAD THE LIBRARIES
+
+```{r}
+### BASH
+# sudo apt-get install aptitude
+# sudo apt-get install libcurl4-openssl-dev
+# sudo apt-get install libxml2-dev
+# sudo apt-get install libcairo2-dev
+# sudo apt-get install libssl-dev
+
+### R
+# rownames(subset(as.data.frame(installed.packages()),Priority=="base"))
+#BiocManager::install('limma')
+#BiocManager::install('EDASeq')
+#BiocManager::install('NOISeq')
+#BiocManager::install('ffpe')
+#BiocManager::install('DESeq2')
+#BiocManager::install('edgeR')
+#BiocManager::install('statmod')
+#BiocManager::install('genefilter')
+#BiocManager::install('calibrate')
+#BiocManager::install('RColorBrewer')
+#BiocManager::install('BiocParallel')
+#BiocManager::install('geneplotter')
+#BiocManager::install('gridExtra')
+#BiocManager::install('lattice')
+#BiocManager::install('fdrtool')
+#BiocManager::install('gplots')
+#BiocManager::install('ggplot2')
+#BiocManager::install('reshape')
+#BiocManager::install('venn')
+
+## Load the packages.
+#library(limma)
+#library(EDASeq)
+library(NOISeq)
+#library(ffpe)
+library(DESeq2)
+library(edgeR)
+#library(statmod)
+#library(genefilter)
+#library(calibrate)
+library(RColorBrewer)
+library(BiocParallel)
+library(geneplotter)
+#library(gridExtra)
+#library(lattice)
+#library(fdrtool)
+library(gplots)
+library(ggplot2)
+#library(reshape)
+```
+
+
+## 1. FOLDERS AND PATHS
+
+```{r}
+## Results.
+Results_path = "/mnt/doctorado/1-PEPINO_HSVd/sRNAnoma/results/"
+
+## Differential expression 
+DE_folder = "07-Differential_expression"
+DE_path = paste0(Results_path, DE_folder, "/")
+DE_path_N = paste0(Results_path, DE_folder, "/NOISeq/")
+DE_path_D = paste0(Results_path, DE_folder, "/DESeq/")
+DE_path_E = paste0(Results_path, DE_folder, "/EdgeR/")
+
+## Counts
+Counts_folder = "02-library_absolute_counts"
+Counts_path = paste0(DE_path, Counts_folder, "/")
+
+## ALL results (fusion)
+ALL_path = paste0(Results_path, DE_folder, "/ALL/")
+
+## Analysis
+# Noiseq
+#x1 = "100"
+# DESeq
+#x1 = "010"
+# EdgeR
+#x1 = "001"
+# Noiseq and DESeq
+#x1 = "110"
+#x2 = "110"
+# Noiseq and EdgeR
+#x1 = "101"
+#x2 = "101"
+# DESeq and EdgeR
+x1 = "011"
+x2 = "011"
+# Noiseq, DESeq y EdgeR
+#x1 = "111"
+#x2 = "111"
+```
+
+
+## 2. NOISEQ
+
+https://www.bioconductor.org/packages/release/bioc/vignettes/NOISeq/inst/doc/NOISeq.pdf
+https://bioinfo.cipf.es/noiseq/lib/exe/fetch.php?media=posternoiseqbio.pdf
+
+```{r}
+if (x1 == "100" | x1 == "110" | x1 == "101" | x1 == "111") {
+  
+  ## CREATE AND CONFIGURATE THE WORK DIRECTORY.
+  if (dir.exists(DE_path)){
+    if (dir.exists(DE_path_N)){
+      unlink(DE_path_N, recursive = T)
+      dir.create(DE_path_N)
+    }else{
+      dir.create(DE_path_N)
+    }
+  }else{
+    dir.create(DE_path)
+    dir.create(DE_path_N)
+  }
+  
+  # time directories in the absolute counts path.
+  times.DIR = dir(Counts_path)
+  
+  for (time.DIR in times.DIR){
+    # time.DIR="T1"
+    
+    ## CREATE AND CONFIGURATE THE WORK DIRECTORY.
+    dir.create(paste0(DE_path_N, time.DIR))
+    dir.create(paste0(DE_path_N, time.DIR,"/counts"))
+    dir.create(paste0(DE_path_N, time.DIR,"/results"))
+    dir.create(paste0(DE_path_N, time.DIR,"/images"))
+    
+    ## DIRECTORIES OF ABSOLUTE COUNT TABLES
+    stresses.DIR = dir(paste0(Counts_path, time.DIR))
+    # mock as the control, treated as a separated group files, hence only one stress condition: HSVd.
+    stresses.DIR = stresses.DIR[!grepl("mock", stresses.DIR)]
+    
+    ## START THE STATISTICAL ANALYSIS
+    for(stress.DIR in stresses.DIR ){
+      #stress.DIR="HSVd"
+      
+      print(paste0("Working with ", time.DIR, "..."))
+      print(paste0("Working with ", stress.DIR, "..."))
+      
+      ## REMOVE THE ENVIRONMENT.
+      # Keep this values.
+      no.rm = c("Results_path", "Counts_folder", "Counts_path", "DE_folder", "DE_path", "DE_path_N", 
+                "DE_path_D", "DE_path_E", "x1", "x2", "stresses.DIR", "stress.DIR", "times.DIR",
+                "time.DIR", "ALL_path")
+      # Remove
+      rm(list=ls()[!(ls()%in%no.rm)])
+      
+      ## ABSOLUTE COUNT FILES
+      workdirSTR = paste0(Counts_path, time.DIR, "/", stress.DIR)
+      workdirCON = paste0(Counts_path, time.DIR, "/mock")
+      files.stress = list.files(workdirSTR, full.names = T)
+      files.stress = files.stress[grep(".abs_counts.csv", files.stress)]
+      files.control = list.files(workdirCON, full.names = T)
+      files.control = files.control[grep(".abs_counts.csv", files.control)]
+      files = c(files.control, files.stress)  
+      
+      ## JOIN ABSOLUTE COUNT FILES IN ONE TABLE.
+      print("Joining the count table of each library...")
+      for (i in 1:length(files)) {
+        list_path = unlist(strsplit(files[i], "/"))
+        sample = unlist(strsplit(list_path[length(list_path)], "-"))[1]
+        replica = unlist(strsplit(unlist(strsplit(list_path[length(list_path)], "-"))[2], ".", fixed = T))[1]
+        name = paste0(sample, "-", replica)
+        print(name)
+        
+        if (i == 1){
+          counts_table = read.csv(files[i], header = T, quote = NULL)
+          colnames(counts_table) = c("sRNA", name)
+        }
+        if (i > 1){
+          counts_table_2 = read.csv(files[i], header = T, quote = NULL)
+          colnames(counts_table_2) = c("sRNA", name)
+          counts_table = merge(counts_table, counts_table_2, by="sRNA", all = TRUE, incomparables = NA)
+        }
+      }
+      
+      # Change NA by 0.
+      counts_table[,2:length(counts_table)][is.na(counts_table[,2:length(counts_table)])] = 0
+      # Convert the numbers to integers
+      counts_table[-1] = as.data.frame(as.matrix(sapply(counts_table[-1], as.integer)))
+      
+      # Save the absolute count table joined without filtering.
+      write.table(counts_table, paste0(DE_path_N, time.DIR, "/counts/", stress.DIR, ".txt"), sep = "\t", quote = F, row.names = F)
+      
+      ## FILTER SRNAS BY ABSOLUTE COUNTS. IN OTHER SCRIPTS WE FILTER BY RPMS WHICH IS MORE STRICT.
+      # This filter is useful to remove the sRNAs with a few absolute counts between replicas.
+      print("Filtering by absolute counts...")
+      # A. Control (mock). The first column is the sequences.
+      ini = 2
+      end = ncol(counts_table)-length(files.stress)
+      keep1 = rowSums(cpm(counts_table[ini:end])>=5) >= length(files.control)-1
+      groupControl = counts_table[keep1,]
+      
+      # B. Stress. The first column is the sequences.
+      ini = (length(counts_table)-length(files.stress))+1
+      end = length(counts_table)
+      keep2 = rowSums(cpm(counts_table[ini:end])>=5) >= length(files.stress)-1
+      groupStress = counts_table[keep2,]
+      
+      # Join the tables of sRNAs kept in Control and kept in Stress. And remove the sRNAs duplicated (kept in both conditions).
+      counts_table_final = rbind(groupControl, groupStress)
+      counts_table_final = counts_table_final[!duplicated(counts_table_final), ]
+      
+      # Save the absolute count table joined and filtered.
+      write.table(counts_table_final, paste0(DE_path_N, time.DIR, "/counts/", stress.DIR, "_filtered.txt"), sep = "\t", quote = F, row.names = F)
+      
+      
+      #################
+      ##### NOISEQ #### (mainly, a transcriptome DE package)
+      #################
+      
+      #### CREATE THE NOISEQ OBJECT
+      
+      print("Building the pre-Noiseq-Object...")
+      # 1. Expression data: mycounts.
+      mycounts = counts_table_final
+      rownames(mycounts) = counts_table_final$sRNA
+      mycounts = mycounts[-1]
+      
+      # 2. Factors: myfactors.
+      namesCol = colnames(mycounts)
+      for(k in 1:length(namesCol)){
+        namesCol[k] = strsplit(namesCol[k], "-")[[1]][1]
+      }
+      options(digits=3, width=95)
+      # Calculate stress and control frequency.
+      dtCol = as.data.frame(table(namesCol))
+      rownames(dtCol) = NULL
+      cCol = dtCol[dtCol$namesCol == "mock", "Freq"]
+      sCol = dtCol[dtCol$namesCol == stress.DIR, "Freq"]
+      # Build myfactors
+      myfactors = data.frame(Treatment = namesCol, 
+                             TreatmentRun = c(paste0(namesCol[1], "-", 7:(7+cCol-1)), paste0(namesCol[length(namesCol)], "-", 1:sCol)),
+                             Run = c(paste0("R", rep(1, cCol)), paste0("R", rep(2, sCol))))
+      
+      # 3. Build the NOISeq object
+      mydata = readData(data=mycounts, factors=myfactors)
+      
+      ## CREATE THE DIRECTORY OF THE STRESS IN THE IMAGES FOLDER
+      i = paste0(DE_path_N, time.DIR, "/images/", stress.DIR, "/")
+      dir.create(i)
+      
+      #### QUALITY CONTROL OF COUNT DATA: GENERATING DATA FOR EXPLORATORY PLOTS AND DRAW THE PLOTS
+      print("Doing the quality control...")
+      # In this case (sRNAs), there will be many experiments that are impossible to carry out. 
+      # We don't have info like genes, length genes, functions... NOISeq is a transcriptome DE package.
+      # Therefore, many plots won't be useful in this case.
+      
+      # A. Biotype detection:  Count distribution per biotype.
+      # The “countsbio” plot per biotype allows to see how the counts are distributed within each biological group. We plot all the biotypes joined.
+      mycountsbio = dat(mydata, factor = NULL, type = "countsbio")
+      i.n.1 = paste0(i, stress.DIR, "-boxplot-expression.png")
+      png(i.n.1, 1200, 800, pointsize=20)
+      explo.plot(mycountsbio, toplot = 1, samples = NULL, plottype = "boxplot")
+      dev.off()
+      
+      # B.1 Sequencing depth & Expression Quantification: Saturation.
+      # The “Saturation” plot showsthe number of features in the genome detected with more than k counts with the sequencing depth of the sample, and with higher and lower simulated sequencing depths.
+      mysaturation = dat(mydata, k = 0, ndepth = 6, type = "saturation")
+      i.n.2 = paste0(i, stress.DIR, "-saturation.png")
+      png(i.n.2, 800, 800, pointsize=20)
+      explo.plot(mysaturation, toplot = 1, samples = 1:length(namesCol), yleftlim = NULL, yrightlim = NULL)
+      dev.off()
+      
+      # B.2 Sequencing depth & Expression Quantification: Sensitivity plot.
+      # The bars show the percentage of features within each sample having more than 0 CPM, or more than 1, 2, 5 and 10 CPM.
+      i.n.3 = paste0(i, stress.DIR, "-sensitivity.png")
+      png(i.n.3, 1200, 800, pointsize=20)
+      explo.plot(mycountsbio, toplot = 1, samples = NULL, plottype = "barplot")
+      dev.off()
+      
+      # C. Sequencing bias detection: RNA composition.
+      # When two samples have different RNA composition, the distribution of sequencing reads across the features is different in such a way that although a feature had the same number of read counts in both samples, it would not mean that it was equally expressed in both.
+      mycd = dat(mydata, type = "cd", norm = FALSE, refColumn = 1)
+      # If value 0 does not fall inside the interval, it means that the deviation of the sample with regard to the reference sample is statistically  significant. Therefore, a normalization proceduresuch as Upper Quartile, TMM or DESeq should be used.
+      i.n.4 = paste0(i, stress.DIR, "-RNA_composition.png")
+      png(i.n.4, 1600, 800, pointsize=20)
+      explo.plot(mycd)
+      dev.off()
+      
+      # D. PCA exploration.
+      myPCA = dat(mydata, type = "PCA")
+      i.n.5 = paste0(i, stress.DIR, "-PCA_no_norm.png")
+      png(i.n.5, 800, 800, pointsize=20)
+      explo.plot(myPCA, factor = "Treatment")
+      dev.off()
+      
+      #### UNDERSTANDING THE NECESSITY OF CARRYING OUT THE NORMALIZATION AND THE FILTERING OUT
+      
+      # The normalization techniques implemented in NOISeq are RPKM, Upper Quartile and TMM, but the package accepts data already normalized.
+      # In this case, we aren't working with genes like in the transcriptome, so we don't have any length. We can only use TMM.
+      myTMM = tmm(assayData(mydata)$exprs, long = 1000, lc = 0)
+      # Excluding features with low counts improves, in general, differential expression results.
+      myfilt = filtered.data(myTMM, factor = myfactors$Treatment, norm = T, depth = NULL, method = 1, cv.cutoff = 110, cpm = 1)
+      # PCA exploration after normalization and filtering.
+      mydata2 = readData(data=myfilt, factors=myfactors)
+      myPCA = dat(mydata2, type = "PCA")
+      i.n.6 = paste0(i, stress.DIR, "-PCA_norm.png")
+      png(i.n.6, 800, 800, pointsize=20)
+      explo.plot(myPCA, factor = "Treatment")
+      dev.off()
+      # It would be more useful if we hadn't done the previous filter by absolute counts.
+      
+      #### CREATE THE NOISEQBIO OBJECT (BIOLOGICAL REPLICATES)
+      
+      print("Building the NoiseqBio Object...")
+      # The package includes two non-parametric approaches for DE analysis: NOISeq for technical replicates or no replication at all, and NOISeqBIO, which is optimized for the use of biological replicates.
+      # We can carry out the normalization and the filtering in this step. But we'll only use the normalization because the filtering will be carried out in other script. Then we will use mydata eSet object.
+      mynoiseqbio = noiseqbio(mydata, k = 0.5, norm = "tmm", factor="Treatment", 
+                              nclust = 7, lc = 0, r = 50, adj = 1.5, plot = FALSE,
+                              a0per = 0.9, random.seed = 12345, filter = 0, depth = NULL, 
+                              cv.cutoff = NULL, cpm = NULL)
+      # The parameters nclus and r affects to the number of sRNAs DE more than the other parameters. If you increase the number of clusters and the number of iterations or decrease their values, you could draw a gaussian curve with the number of DE sRNAs 
+      
+      #### DE ANALYSIS
+      
+      print("Doing the DE analysis...")
+      corte = 0.95
+      mynoiseq.all = degenes(mynoiseqbio, q = 0, M = NULL)
+      mynoiseq.all2 = data.frame(sRNA=rownames(mynoiseq.all))
+      mynoiseq.all2 = cbind(mynoiseq.all2, mynoiseq.all)
+      rownames(mynoiseq.all2) = NULL
+      
+      print(paste0("sRNAs differentially expressed: ", table(mynoiseq.all2$prob >= corte)["TRUE"]))
+      print(paste0("sRNAs differentially expressed (up): ", table(mynoiseq.all2$prob >= corte & mynoiseq.all2$log2FC > 0)["TRUE"]))
+      print(paste0("sRNAs differentially expressed (down): ", table(mynoiseq.all2$prob >= corte & mynoiseq.all2$log2FC < 0)["TRUE"]))
+      
+      # Save the results of DE.
+      write.table(mynoiseq.all2, paste0(DE_path_N, time.DIR, "/results/", stress.DIR, ".txt"), sep="\t", row.names = F, quote = F)
+      
+      #### IMAGES POST DE ANALYSIS
+      
+      i.n.6 = paste0(i, stress.DIR, "-DEplot-expr.png")
+      png(i.n.6, 1000, 1000, pointsize=20)
+      DE.plot(mynoiseqbio, q = corte, graphic = "expr", log.scale = TRUE)
+      dev.off()
+      
+      i.n.7 = paste0(i, stress.DIR, "-DEplot-MD.png")
+      png(i.n.7, 1000, 1000, pointsize=20)
+      DE.plot(mynoiseqbio, q = corte, graphic = "MD")
+      dev.off()
+    }
+  }
+}
+```
+
+
+## 3. DESEQ
+
+https://bioconductor.org/packages/release/workflows/vignettes/rnaseqGene/inst/doc/rnaseqGene.html
+
+
+```{r}
+if (x1 == "010" | x1 == "110" | x1 == "011" | x1 == "111") {
+  
+  ## CREATE AND CONFIGURATE THE WORK DIRECTORY.
+  if (dir.exists(DE_path)){
+    if (dir.exists(DE_path_D)){
+      unlink(DE_path_D, recursive = T)
+      dir.create(DE_path_D)
+    }else{
+      dir.create(DE_path_D)
+    }
+  }else{
+    dir.create(DE_path)
+    dir.create(DE_path_D)
+  }
+  
+  # times directories in the absolute counts path.
+  times.DIR = dir(Counts_path)
+  
+  for (time.DIR in times.DIR){
+    # time.DIR="T1"
+    
+    ## CREATE AND CONFIGURATE THE WORK DIRECTORY.
+    dir.create(paste0(DE_path_D, time.DIR))
+    dir.create(paste0(DE_path_D, time.DIR,"/counts"))
+    dir.create(paste0(DE_path_D, time.DIR,"/results"))
+    dir.create(paste0(DE_path_D, time.DIR,"/images"))
+    
+    ## DIRECTORIES OF ABSOLUTE COUNT TABLES
+    stresses.DIR = dir(paste0(Counts_path, time.DIR))
+    # mock as the control, treated as a separated group files, hence only one stress condition: HSVd.
+    stresses.DIR = stresses.DIR[!grepl("mock", stresses.DIR)]
+    
+    ## START THE STATISTICAL ANALYSIS
+    for(stress.DIR in stresses.DIR ){
+      #stress.DIR="HSVd"
+      
+      print(paste0("Working with ", time.DIR, "..."))
+      print(paste0("Working with ", stress.DIR, "..."))
+      
+      ## REMOVE THE ENVIRONMENT.
+      # Keep this values.
+      no.rm = c("Results_path", "Counts_folder", "Counts_path", "DE_folder", "DE_path", "DE_path_N", 
+                "DE_path_D", "DE_path_E", "x1", "x2", "stresses.DIR", "stress.DIR", "times.DIR", 
+                "time.DIR", "ALL_path")
+      # Remove
+      rm(list=ls()[!(ls()%in%no.rm)])
+      
+      ## ABSOLUTE COUNT FILES
+      workdirSTR = paste0(Counts_path, time.DIR, "/", stress.DIR)
+      workdirCON = paste0(Counts_path, time.DIR, "/mock")
+      files.stress = list.files(workdirSTR, full.names = T)
+      files.stress = files.stress[grep(".abs_counts.csv", files.stress)]
+      files.control = list.files(workdirCON, full.names = T)
+      files.control = files.control[grep(".abs_counts.csv", files.control)]
+      files = c(files.control, files.stress)  
+      
+      ## JOIN ABSOLUTE COUNT FILES IN ONE TABLE.
+      print("Joining the count table of each library...")
+      for (i in 1:length(files)) {
+        list_path = unlist(strsplit(files[i], "/"))
+        sample = unlist(strsplit(list_path[length(list_path)], "-"))[1]
+        replica = unlist(strsplit(unlist(strsplit(list_path[length(list_path)], "-"))[2], ".", fixed = T))[1]
+        name = paste0(sample, "-", replica)
+        print(name)
+        
+        if (i == 1){
+          counts_table = read.csv(files[i], header = T, quote = NULL)
+          colnames(counts_table) = c("sRNA", name)
+        }
+        if (i > 1){
+          counts_table_2 = read.csv(files[i], header = T, quote = NULL)
+          colnames(counts_table_2) = c("sRNA", name)
+          counts_table = merge(counts_table, counts_table_2, by="sRNA", all = TRUE, incomparables = NA)
+        }
+      }
+      
+      # Change NA by 0.
+      counts_table[,2:length(counts_table)][is.na(counts_table[,2:length(counts_table)])] = 0
+      # Convert the numbers to integers
+      counts_table[-1] = as.data.frame(as.matrix(sapply(counts_table[-1], as.integer)))
+      
+      # Save the absolute count table joined without filtering.
+      write.table(counts_table, paste0(DE_path_D, time.DIR, "/counts/", stress.DIR, ".txt"), sep = "\t", quote = F, row.names = F)
+      
+      ## FILTER SRNAS BY ABSOLUTE COUNTS. IN OTHER SCRIPTS WE FILTER BY RPMS WHICH IS MORE STRICT.
+      # This filter is useful to remove the sRNAs with a few absolute counts between replicas.
+      print("Filtering by absolute counts...")
+      # A. Control (mock). The first column is the sequences.
+      ini = 2
+      end = ncol(counts_table)-length(files.stress)
+      keep1 = rowSums(cpm(counts_table[ini:end])>=5) >= length(files.control)-1
+      groupControl = counts_table[keep1,]
+      
+      # B. Stress. The first column is the sequences.
+      ini = (length(counts_table)-length(files.stress))+1
+      end = length(counts_table)
+      keep2 = rowSums(cpm(counts_table[ini:end])>=5) >= length(files.stress)-1
+      groupStress = counts_table[keep2,]
+      
+      # Join the tables of sRNAs kept in Control and kept in Stress. And remove the sRNAs duplicated (kept in both conditions).
+      counts_table_final = rbind(groupControl, groupStress)
+      counts_table_final = counts_table_final[!duplicated(counts_table_final), ]
+      
+      # Save the absolute count table joined and filtered.
+      write.table(counts_table_final, paste0(DE_path_D, time.DIR, "/counts/", stress.DIR, "_filtered.txt"), sep = "\t", quote = F, row.names = F)
+      
+      
+      #################
+      ##### DESeq #####
+      #################
+      
+      #### BUILD THE DESEQ OBJECT
+      
+      print("Building the DESeq Object...")
+      
+      # A. countData
+      counts.A = counts_table_final[-1]
+      rownames(counts.A) = counts_table_final$sRNA
+      
+      # B. colData
+      colData = data.frame(row.names=colnames(counts.A), 
+                           condition1=factor(c(rep("untreated",length(files.control)), rep("treated",length(files.stress)))),
+                           condition2=factor(unlist(strsplit(colnames(counts.A), "-"))[grepl("[a-z]", unlist(strsplit(colnames(counts.A), "-")))]))
+      colData$condition2 = relevel(colData$condition2, "mock")
+      colData$condition1 = relevel(colData$condition1, "untreated")
+      
+      # C. Build the DESeqDataSet.
+      dds = DESeqDataSetFromMatrix(countData = counts.A, colData = colData, design = ~condition2)
+      
+      #### FILTERING
+      
+      # As we have filtered the read counts previously, it won't be necessary this step because it's the same.
+      #keep = rowSums(counts(dds)) > 1
+      #dds = dds[keep,]
+      #keep = rowSums(counts(dds) >= 10) >= 3
+      #dds = dds[keep,]
+      
+      #### DE ANALYSIS
+      
+      print("Doing the DE analysis...")
+      # DESeq already estimates size factors, dispersion...
+      # Gene length does not need to be accounted for by the tool. However, sequencing depth and RNA composition do need to be taken into account.
+      # To normalize for sequencing depth and RNA composition, DESeq2 uses the median of ratios method. 
+      dds = DESeq(dds)
+      
+      # Set the Cook's cutoff to remove the outliers
+      p = 1 # Number of coefficients being fitted
+      m = length(files) # Number of samples
+      cooksCutoff = qf(0.95, p, m - p)
+      
+      # Results
+      corte = 0.05
+      #res = results(dds, cooksCutoff = cooksCutoff, pAdjustMethod = "BH", independentFiltering=FALSE)
+      res = results(dds, cooksCutoff = cooksCutoff, pAdjustMethod = "BH")
+      
+      #info: rowMeans(counts(dds, normalized=TRUE)) para calcular baseMean
+      # We can order our results table by the smallest adjusted p value:
+      resOrdered = res[order(res$pvalue),]
+      dt = as.data.frame(resOrdered)
+      dt$sRNA = rownames(dt)
+      rownames(dt) = NULL
+      dt = dt[,c(length(dt),1:(length(dt)-1))]
+      
+      print(paste0("sRNAs differentially expressed (p-value): ", table(dt$pvalue <= corte & !is.na(dt$pvalue))["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-value, up): ", table(dt$pvalue <= corte & !is.na(dt$pvalue) & dt$log2FoldChange > 0)["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-value, down): ", table(dt$pvalue <= corte & !is.na(dt$pvalue) & dt$log2FoldChange < 0)["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-adj): ", table(dt$padj <= corte & !is.na(dt$padj))["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-adj, up): ", table(dt$padj <= corte & !is.na(dt$padj) & dt$log2FoldChange > 0)["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-adj, down): ", table(dt$padj <= corte & !is.na(dt$padj) & dt$log2FoldChange < 0)["TRUE"]))
+      
+      # Save the results of DE.
+      write.table(dt, paste0(DE_path_D, time.DIR, "/results/", stress.DIR, ".txt"), sep="\t", row.names = F, quote = F)
+    }
+  }
+}
+```
+
+
+
+## 4. EDGER
+
+https://rstudio-pubs-static.s3.amazonaws.com/79395_b07ae39ce8124a5c873bd46d6075c137.html
+
+https://www.biostars.org/p/350663/
+
+https://www.bioconductor.org/packages/release/bioc/vignettes/edgeR/inst/doc/edgeRUsersGuide.pdf
+
+```{r}
+if (x1 == "001" | x1 == "011" | x1 == "101" | x1 == "111") {
+  
+  if (dir.exists(DE_path)){
+    if (dir.exists(DE_path_E)){
+      unlink(DE_path_E, recursive = T)
+      dir.create(DE_path_E)
+    }else{
+      dir.create(DE_path_E)
+    }
+  }else{
+    dir.create(DE_path)
+    dir.create(DE_path_E)
+  }
+   
+  times.DIR = dir(Counts_path)
+  
+  for (time.DIR in times.DIR){
+    # time.DIR="T3"
+    
+    ## CREATE AND CONFIGURATE THE WORK DIRECTORY.
+    dir.create(paste0(DE_path_E, time.DIR))
+    dir.create(paste0(DE_path_E, time.DIR,"/counts"))
+    dir.create(paste0(DE_path_E, time.DIR,"/results"))
+    dir.create(paste0(DE_path_E, time.DIR,"/images"))
+    
+    ## DIRECTORIES OF ABSOLUTE COUNT TABLES
+    stresses.DIR = dir(paste0(Counts_path, time.DIR))
+    # mock as the control, treated as a separated group files, hence only one stress condition: HSVd.
+    stresses.DIR = stresses.DIR[!grepl("mock", stresses.DIR)]
+    
+    ## START THE STATISTICAL ANALYSIS
+    for(stress.DIR in stresses.DIR ){
+      #stress.DIR="HSVd"
+      
+      print(paste0("Working with ", time.DIR, "..."))
+      print(paste0("Working with ", stress.DIR, "..."))
+      
+      ## REMOVE THE ENVIRONMENT.
+      # Keep this values.
+      no.rm = c("Results_path", "Counts_folder", "Counts_path", "DE_folder", "DE_path", "DE_path_N", 
+                "DE_path_D", "DE_path_E", "x1", "x2", "stresses.DIR", "stress.DIR", "times.DIR", 
+                "time.DIR", "ALL_path")
+      # Remove
+      rm(list=ls()[!(ls()%in%no.rm)])
+      
+      ## ABSOLUTE COUNT FILES
+      workdirSTR = paste0(Counts_path, time.DIR, "/", stress.DIR)
+      workdirCON = paste0(Counts_path, time.DIR, "/mock")
+      files.stress = list.files(workdirSTR, full.names = T)
+      files.stress = files.stress[grep(".abs_counts.csv", files.stress)]
+      files.control = list.files(workdirCON, full.names = T)
+      files.control = files.control[grep(".abs_counts.csv", files.control)]
+      files = c(files.control, files.stress)  
+      
+      ## JOIN ABSOLUTE COUNT FILES IN ONE TABLE.
+      print("Joining the count table of each library...")
+      for (i in 1:length(files)) {
+        list_path = unlist(strsplit(files[i], "/"))
+        sample = unlist(strsplit(list_path[length(list_path)], "-"))[1]
+        replica = unlist(strsplit(unlist(strsplit(list_path[length(list_path)], "-"))[2], ".", fixed = T))[1]
+        name = paste0(sample, "-", replica)
+        print(name)
+        
+        if (i == 1){
+          counts_table = read.csv(files[i], header = T, quote = NULL)
+          colnames(counts_table) = c("sRNA", name)
+        }
+        if (i > 1){
+          counts_table_2 = read.csv(files[i], header = T, quote = NULL)
+          colnames(counts_table_2) = c("sRNA", name)
+          counts_table = merge(counts_table, counts_table_2, by="sRNA", all = TRUE, incomparables = NA)
+        }
+      }
+      
+      # Change NA by 0.
+      counts_table[,2:length(counts_table)][is.na(counts_table[,2:length(counts_table)])] = 0
+      # Convert the numbers to integers
+      counts_table[-1] = as.data.frame(as.matrix(sapply(counts_table[-1], as.integer)))
+      
+      # Save the absolute count table joined without filtering.
+      write.table(counts_table, paste0(DE_path_E, time.DIR, "/counts/", stress.DIR, ".txt"), sep = "\t", quote = F, row.names = F)
+      
+      
+      ## FILTER SRNAS BY ABSOLUTE COUNTS. IN OTHER SCRIPTS WE FILTER BY RPMS WHICH IS MORE STRICT.
+      # This filter is useful to remove the sRNAs with a few absolute counts between replicas.
+      print("Filtering by absolute counts...")
+      # A. Control (mock). The first column is the sequences.
+      ini = 2
+      end = ncol(counts_table)-length(files.stress)
+      keep1 = rowSums(cpm(counts_table[ini:end])>=5) >= length(files.control)-1
+      groupControl = counts_table[keep1,]
+      
+      # B. Stress. The first column is the sequences.
+      ini = (length(counts_table)-length(files.stress))+1
+      end = length(counts_table)
+      keep2 = rowSums(cpm(counts_table[ini:end])>=5) >= length(files.stress)-1
+      groupStress = counts_table[keep2,]
+      
+      # Join the tables of sRNAs kept in Control and kept in Stress. And remove the sRNAs duplicated (kept in both conditions).
+      counts_table_final = rbind(groupControl, groupStress)
+      counts_table_final = counts_table_final[!duplicated(counts_table_final), ]
+      
+      # Save the absolute count table joined and filtered.
+      write.table(counts_table_final, paste0(DE_path_E, time.DIR, "/counts/", stress.DIR, "_filtered.txt"), sep = "\t", quote = F, row.names = F)
+      
+      
+      #################
+      ##### EdgeR #####
+      #################
+      
+      #### BUILD THE EDGER OBJECT
+      
+      print("Building the EdgeR Object...")
+      
+      # A. counts data.
+      x = counts_table_final
+      rownames(x) = x$sRNA
+      x$sRNA = NULL
+      
+      # B. sample data.
+      condition.e = factor(c(rep("CONTROL", 3), rep(stress.DIR, 3)))
+      condition.e = relevel(condition.e, ref="CONTROL")
+      
+      # C. Build the object.
+      y = DGEList(counts = x, group = condition.e)
+      
+      #### DESIGN MATRIX
+      
+      design = model.matrix(~condition.e) 
+      colnames(design) = levels(condition.e)
+      
+      #### DE ANALYSIS
+      
+      print("Doing the DE analysis...")
+      
+      ## Exact test: Pairwise comparison (Two groups)
+      # Calculate the norm factors values and the dispersion values.
+      #y = calcNormFactors(y, method = c("TMM"))
+      #y = estimateCommonDisp(y)
+      #y = estimateTagwiseDisp(y)
+      
+      # DE
+      #corte = 0.05
+      #res = exactTest(y)
+      #res_2 = as.data.frame(topTags(res, n = dim(res)[1], adjust.method = "BH", sort.by = "PValue"))
+      #res_2$sRNA = rownames(res_2)
+      #rownames(res_2) = NULL
+      #res_2 = res_2[,c(ncol(res_2),1:(ncol(res_2)-1))]
+      
+      #print(paste0("sRNAs differentially expressed (p-value): ", table(res_2$PValue <= corte)["TRUE"]))
+      #print(paste0("sRNAs differentially expressed (p-value, up): ", table(res_2$PValue <= corte & !is.na(res_2$PValue) & res_2$logFC > 0)["TRUE"]))
+      #print(paste0("sRNAs differentially expressed (p-value, down): ", table(res_2$PValue <= corte & !is.na(res_2$PValue) & res_2$logFC < 0)["TRUE"]))
+      #print(paste0("sRNAs differentially expressed (p-adj): ", table(res_2$FDR <= corte & !is.na(res_2$FDR))["TRUE"]))
+      #print(paste0("sRNAs differentially expressed (p-adj, up): ", table(res_2$FDR <= corte & !is.na(res_2$FDR) & res_2$logFC > 0)["TRUE"]))
+      #print(paste0("sRNAs differentially expressed (p-adj, down): ", table(res_2$FDR <= corte & !is.na(res_2$FDR) & res_2$logFC < 0)["TRUE"]))
+      
+      # Save the results of DE
+      #write.table(res_2, paste0(DE_path_E, time.DIR, "/results/", stress.DIR, ".txt"), sep="\t", row.names = F, quote = F)
+      
+      ## glm functionality: Pairwise comparison (Two groups or more groups)
+      # Calculate the norm factors values and the dispersion values.
+      y = calcNormFactors(y, method = c("TMM"))
+      y = estimateGLMCommonDisp(y, design)
+      y = estimateGLMTrendedDisp(y, design)
+      y = estimateGLMTagwiseDisp(y, design)
+      
+      # DE
+      corte = 0.05
+      fit = glmFit(y, design)
+      lrt = glmLRT(fit, coef = ncol(fit$design))
+      lrt2 = as.data.frame(topTags(lrt, n = dim(lrt)[1], adjust.method = "BH", sort.by = "PValue"))
+      lrt2$sRNA = rownames(lrt2)
+      rownames(lrt2) = NULL
+      lrt2 = lrt2[,c(ncol(lrt2),1:(ncol(lrt2)-1))]
+      
+      print(paste0("sRNAs differentially expressed (p-value): ", table(lrt2$PValue <= corte & !is.na(lrt2$PValue))["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-value, up): ", table(lrt2$PValue <= corte & !is.na(lrt2$PValue) & lrt2$logFC > 0)["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-value, down): ", table(lrt2$PValue <= corte & !is.na(lrt2$PValue) & lrt2$logFC < 0)["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-adj): ", table(lrt2$FDR <= corte & !is.na(lrt2$FDR))["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-adj, up): ", table(lrt2$FDR <= corte & !is.na(lrt2$FDR) & lrt2$logFC > 0)["TRUE"]))
+      print(paste0("sRNAs differentially expressed (p-adj, down): ", table(lrt2$FDR <= corte & !is.na(lrt2$FDR) & lrt2$logFC < 0)["TRUE"]))
+      
+      # Save the results of DE
+      write.table(lrt2, paste0(DE_path_E, time.DIR, "/results/", stress.DIR, ".txt"), sep="\t", row.names = F, quote = F)
+    }
+  }
+}
+```
+
+
+
+```{r}
+if (dir.exists(ALL_path)){
+  unlink(ALL_path, recursive = T)
+}else{
+  dir.create(ALL_path)
+}
+
+# time directories in the absolute counts path.
+times.DIR = dir(Counts_path)
+
+for (time.DIR in times.DIR){
+  stresses.DIR = dir(paste0(Counts_path, time.DIR))
+  stresses.DIR = stresses.DIR[!grepl("mock", stresses.DIR)]
+  
+  ## NOISEQ, DESEQ AND EDGER
+  if (x2 == "111") {
+    print("Joining Noiseq, Deseq and EdgeR...")
+    for (i in 1:length(stresses.DIR)){
+      
+      N = read.table(paste0(DE_path_N, time.DIR, "/results/", stresses.DIR[i], ".txt"), header = T, sep = "\t")
+      N = N[,c("sRNA", "prob", "log2FC")]
+      colnames(N) = c("sRNA", "prob.N", "log2FC.N")
+      D = read.table(paste0(DE_path_D, time.DIR, "/results/", stresses.DIR[i], ".txt"), header = T, sep = "\t")
+      D = D[,c("sRNA", "baseMean", "log2FoldChange", "pvalue", "padj")]
+      colnames(D) = c("sRNA", "baseMean", "log2FC.D", "pvalue.D", "padj.D")
+      E = read.table(paste0(DE_path_E, time.DIR, "/results/", stresses.DIR[i], ".txt"), header = T, sep = "\t")
+      E = E[,c("sRNA", "logFC", "logCPM", "PValue", "FDR")]
+      colnames(E) = c("sRNA", "log2FC.E", "logCPM", "pvalue.E", "padj.E")
+      
+      if (i == 1) {
+        A = merge(merge(D, E, by = 'sRNA', all = T), N, by = 'sRNA', all = T)
+        A$"Stress" = stresses.DIR[i]
+        A$"Time" = time.DIR
+      }else {
+        X = merge(merge(D, E, by = 'sRNA', all = T), N, by = 'sRNA', all = T)
+        X$"Stress" = stresses.DIR[i]
+        X$"Time" = time.DIR
+        A = rbind(A, X)
+      }
+    }
+    write.table(A, paste0(ALL_path, time.DIR, ".txt"), sep = "\t", quote = F, row.names = F)
+  }
+  
+  ## NOISEQ AND DESEQ
+  if (x2 == "110") {
+    print("Joining Noiseq and Deseq...")
+    for (i in 1:length(stresses.DIR)){
+      
+      N = read.table(paste0(DE_path_N, time.DIR, "/results/", stresses.DIR[i], ".txt"), header = T, sep = "\t")
+      N = N[,c("sRNA", "prob", "log2FC")]
+      colnames(N) = c("sRNA", "prob.N", "log2FC.N")
+      D = read.table(paste0(DE_path_D, time.DIR, "/results/", stresses.DIR[i], ".txt"), header = T, sep = "\t")
+      D = D[,c("sRNA", "baseMean", "log2FoldChange", "pvalue", "padj")]
+      colnames(D) = c("sRNA", "baseMean", "log2FC.D", "pvalue.D", "padj.D")
+      
+      if (i == 1) {
+        A = merge(D, N, by = 'sRNA', all = T)
+        A$"Stress" = stresses.DIR[i]
+        A$"Time" = time.DIR
+      }else {
+        X = merge(D, N, by = 'sRNA', all = T)
+        X$"Stress" = stresses.DIR[i]
+        X$"Time" = time.DIR
+        A = rbind(A, X)
+      }
+    }
+    write.table(A, paste0(ALL_path, time.DIR, ".txt"), sep = "\t", quote = F, row.names = F)
+  }
+  
+  ## NOISEQ AND EDGER
+  if (x2 == "101") {
+    print("Joining Noiseq and EdgeR...")
+    for (i in 1:length(stresses.DIR)){
+      
+      N = read.table(paste0(DE_path_N, time.DIR, "/results/", stresses.DIR[i], ".txt"), header = T, sep = "\t")
+      N = N[,c("sRNA", "prob", "log2FC")]
+      colnames(N) = c("sRNA", "prob.N", "log2FC.N")
+      E = read.table(paste0(DE_path_E, time.DIR, "/results/", stresses.DIR[i], ".txt"), header = T, sep = "\t")
+      E = E[,c("sRNA", "logFC", "logCPM", "PValue", "FDR")]
+      colnames(E) = c("sRNA", "log2FC.E", "logCPM", "pvalue.E", "padj.E")
+      
+      if (i == 1) {
+        A = merge(E, N, by = 'sRNA', all = T)
+        A$"Stress" = stresses.DIR[i]
+        A$"Time" = time.DIR
+      }else {
+        X = merge(E, N, by = 'sRNA', all = T)
+        X$"Stress" = stresses.DIR[i]
+        X$"Time" = time.DIR
+        A = rbind(A, X)
+      }
+    }
+    write.table(A, paste0(ALL_path, time.DIR, ".txt"), sep = "\t", quote = F, row.names = F)
+  }
+  
+  ## DESEQ AND EDGER
+  if (x2 == "011") {
+    print("Joining Deseq and EdgeR...")
+    for (i in 1:length(stresses.DIR)){
+      
+      D = read.table(paste0(DE_path_D, time.DIR, "/results/", stresses.DIR[i], ".txt"), header = T, sep = "\t")
+      D = D[,c("sRNA", "baseMean", "log2FoldChange", "pvalue", "padj")]
+      colnames(D) = c("sRNA", "baseMean", "log2FC.D", "pvalue.D", "padj.D")
+      E = read.table(paste0(DE_path_E, time.DIR, "/results/", stresses.DIR[i], ".txt"), header = T, sep = "\t")
+      E = E[,c("sRNA", "logFC", "logCPM", "PValue", "FDR")]
+      colnames(E) = c("sRNA", "log2FC.E", "logCPM", "pvalue.E", "padj.E")
+      
+      if (i == 1) {
+        A = merge(D, E, by = 'sRNA', all = T)
+        A$"Stress" = stresses.DIR[i]
+        A$"Time" = time.DIR
+      }else {
+        X = merge(D, E, by = 'sRNA', all = T)
+        X$"Stress" = stresses.DIR[i]
+        X$"Time" = time.DIR
+        A = rbind(A, X)
+      }
+    }
+    write.table(A, paste0(ALL_path, time.DIR, ".txt"), sep = "\t", quote = F, row.names = F)
+  }
+}
+```
+
+
