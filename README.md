@@ -20,7 +20,7 @@ For more information about the methodology to obtain these tables read the paper
 
 ### Scripts
 
-- SRNAnome:
-- Transcriptome: 
-- Methylome: 
+- SRNAnome: Script used to perform differential expression analysis of small RNAs.
+- Transcriptome: Script used to perform differential expression analysis of transcripts.
+- Methylome: Script used to perform differential methylation analysis.
 
