@@ -20,8 +20,9 @@ For more information about the methodology to obtain these tables read the paper
 
 ### Scripts
 
+This section provides the scripts that generate the tables mentioned in the previous section.
+
 - SRNAnome: Script used to perform differential expression analysis of small RNAs.
-- Transcriptome: Script used to perform differential expression analysis of transcripts.
 - Methylome: Script used to perform differential methylation analysis.
 
-This section provides the scripts that generate the tables mentioned in the previous section.
+Transcriptome folder doesn't exist because  because the web-based platform Galaxy was used to perform differential expression analysis of transcripts.
