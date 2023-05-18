@@ -1,3 +1,5 @@
+# Author: Pascual Villalba-Bermell
+
 ## CONDA ENVIRONMENT
 #conda source r4-base
 
