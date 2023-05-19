@@ -26,3 +26,4 @@ This section provides the scripts that generate the tables mentioned in the prev
 - Methylome: Script used to perform differential methylation analysis.
 
 Transcriptome folder doesn't exist because the web-based platform Galaxy was used to perform differential expression analysis of transcripts.
+n
